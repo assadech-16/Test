@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TCAS Search & Filter System</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <div class="search-container">
+    <h2>ค้นหาหลักสูตรมหาลัย (5 คณะนำร่อง)</h2>
+    
+    <div class="search-box-wrapper">
+      <input type="text" id="searchInput" placeholder="พิมพ์พิมพ์ชื่อมหาวิทยาลัย หรือ ประเภทหลักสูตร เช่น ภาษาไทย, นานาชาติ...">
+      <button id="searchBtn">ค้นหา</button>
+    </div>
+
+    <div class="faculty-filters">
+      <button class="filter-btn active" data-faculty-id="all">ทั้งหมด</button>
+      <button class="filter-btn" data-faculty-id="1">⚕️ แพทยศาสตร์</button>
+      <button class="filter-btn" data-faculty-id="2">⚙️ วิศวกรรมศาสตร์</button>
+      <button class="filter-btn" data-faculty-id="3">💼 บัญชี/พาณิชย์</button>
+      <button class="filter-btn" data-faculty-id="4">⚖️ นิติศาสตร์</button>
+      <button class="filter-btn" data-faculty-id="5">📣 นิเทศศาสตร์</button>
+    </div>
+
+    <div id="loadingStatus" class="loading">กำลังดึงข้อมูลจากฐานข้อมูล...</div>
+
+    <div class="result-count">พบทั้งหมด <span id="countNum">0</span> หลักสูตร</div>
+
+    <div class="results-grid" id="resultsGrid">
+      </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+<style>
+:root {
+  --primary-color: #4f46e5;
+  --bg-color: #f8fafc;
+  --card-bg: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, 'ChulaCharas';
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  margin: 0;
+  padding: 20px;
+}
+
+.search-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+h2 {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+/* Search Box */
+.search-box-wrapper {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+#searchInput {
+  flex: 1;
+  padding: 12px 20px;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 16px;
+  outline: none;
+  transition: 0.2s;
+}
+
+#searchInput:focus {
+  border-color: var(--primary-color);
+}
+
+#searchBtn {
+  padding: 0 24px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* Faculty Filters */
+.faculty-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 25px;
+}
+
+.filter-btn {
+  padding: 10px 18px;
+  background-color: white;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  background-color: #f1f5f9;
+}
+
+.filter-btn.active {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+/* Results Display */
+.result-count {
+  margin-bottom: 15px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.program-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+}
+
+.program-card h3 {
+  margin-top: 0;
+  font-size: 18px;
+  color: var(--primary-color);
+}
+
+.program-card .uni-name {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.program-card .tag {
+  display: inline-block;
+  padding: 4px 8px;
+  background-color: #f1f5f9;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+}
+</style>
+<script>
+// 1. ตั้งค่าเชื่อมต่อ Supabase (เปลี่ยนชื่อตัวแปรเป็น supabaseClient ป้องกันชื่อชนกัน)
+const SUPABASE_URL = "https://gegxhtqvkmarqznplbsw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlZ3hodHF2a21hcnF6bnBsYnN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NzI4MTUsImV4cCI6MjA5NzI0ODgxNX0.HxHkmbLib78POSTq_5BfMNu_1y6TcnX0vvLYTfaFdPM";
+
+// เรียกใช้คลังคำสั่งจาก CDN ผ่านคำว่า supabase.createClient เหมือนเดิม
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ตัวแปรสำหรับเก็บข้อมูลทั้งหมดที่โหลดมาจากหลังบ้าน
+let allPrograms = []; 
+let currentFacultyFilter = "all";
+
+// ดึง Elements จาก HTML
+const resultsGrid = document.getElementById('resultsGrid');
+const loadingStatus = document.getElementById('loadingStatus');
+const countNum = document.getElementById('countNum');
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const filterBtns = document.querySelectorAll('.filter-btn');
+
+// 2. ฟังก์ชันดึงข้อมูลจาก Supabase 
+async function fetchProgramsFromServer() {
+  try {
+    loadingStatus.style.display = 'block';
+    
+    // เปลี่ยนมาใช้ตัวแปร supabaseClient ยิงดึงข้อมูลแทน
+    const { data, error } = await supabaseClient
+      .from('programs')
+      .select(`
+        id,
+        program_type,
+        university_id,
+        faculty_id,
+        universities (name_th),
+        faculties (name_th)
+      `);
+
+    if (error) throw error;
+
+    allPrograms = data;
+    loadingStatus.style.display = 'none';
+    
+    // สั่งให้วาดข้อมูลลงหน้าจอครั้งแรก
+    renderResults(allPrograms);
+
+  } catch (error) {
+    console.error("เกิดข้อผิดพลาดในการดึงข้อมูล:", error.message);
+    loadingStatus.innerText = "โหลดข้อมูลไม่สำเร็จ กรุณาเช็คการเชื่อมต่อ Supabase";
+  }
+}
+
+// 3. ฟังก์ชันกรองข้อมูลและแสดงผล (Filter & Render Logic)
+function renderResults(dataToRender) {
+  resultsGrid.innerHTML = ''; // เคลียร์หน้าจอเก่า
+  
+  const searchText = searchInput.value.trim().toLowerCase();
+
+  const filteredData = dataToRender.filter(item => {
+    // เช็คเงื่อนไขฟิลเตอร์คณะ
+    const matchFaculty = (currentFacultyFilter === 'all' || item.faculty_id.toString() === currentFacultyFilter);
+    
+    // เช็คเงื่อนไขการพิมพ์ค้นหา
+    const uniName = item.universities?.name_th?.toLowerCase() || '';
+    const progType = item.program_type?.toLowerCase() || '';
+    const progId = item.id?.toString() || '';
+    const matchSearch = uniName.includes(searchText) || progType.includes(searchText) || progId.includes(searchText);
+
+    return matchFaculty && matchSearch;
+  });
+
+  // อัปเดตตัวเลขจำนวนหลักสูตรที่พบ
+  countNum.innerText = filteredData.length;
+
+  if (filteredData.length === 0) {
+    resultsGrid.innerHTML = '<div class="loading">❌ ไม่พบข้อมูลหลักสูตรที่ค้นหา</div>';
+    return;
+  }
+
+  // วนลูปสร้าง Card HTML ไปแปะบนหน้าเว็บ
+  filteredData.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'program-card';
+    card.innerHTML = `
+  <h3>${item.faculties?.name_th || 'ไม่ระบุคณะ'}</h3>
+  <div class="uni-name">🏢 ${item.universities?.name_th || 'ไม่ระบุสถาบัน'} (รหัสมหาลัย: ${item.university_id})</div>
+  <div style="margin-bottom: 10px; font-size: 13px; color: #64748b;">รหัสหลักสูตร: ${item.id}</div>
+  <span class="tag">✨ ${item.program_type}</span>
+`;
+    resultsGrid.appendChild(card);
+  });
+}
+
+// 4. ดักจับเหตุการณ์ (Event Listeners)
+filterBtns.forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    filterBtns.forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+
+    currentFacultyFilter = e.target.getAttribute('data-faculty-id');
+    renderResults(allPrograms);
+  });
+});
+
+searchBtn.addEventListener('click', () => renderResults(allPrograms));
+searchInput.addEventListener('keyup', () => renderResults(allPrograms));
+
+window.addEventListener('DOMContentLoaded', fetchProgramsFromServer);
+</script>
